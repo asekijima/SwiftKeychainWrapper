@@ -42,6 +42,7 @@ private let SecAttrAccessGroup: String! = kSecAttrAccessGroup as String
 private let SecReturnAttributes: String = kSecReturnAttributes as String
 private let SecAuthenticationUI: String = kSecUseAuthenticationUI as String
 private let SecAttrAccessControl: String = kSecAttrAccessControl as String
+private let SecOperationMessage: String = kSecUseOperationPrompt as String
 
 /// KeychainWrapper is a class to help make Keychain access in Swift more straightforward. It is designed to make accessing the Keychain services more like using NSUserDefaults, which is much more familiar to people.
 open class KeychainWrapper {
@@ -148,32 +149,32 @@ open class KeychainWrapper {
     
     // MARK: Public Getters
     
-    open func integer(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Int? {
-        guard let numberValue = object(forKey: key, withAccessibility: accessibility) as? NSNumber else {
+    open func integer(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> Int? {
+        guard let numberValue = object(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) as? NSNumber else {
             return nil
         }
         
         return numberValue.intValue
     }
     
-    open func float(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Float? {
-        guard let numberValue = object(forKey: key, withAccessibility: accessibility) as? NSNumber else {
+    open func float(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> Float? {
+        guard let numberValue = object(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) as? NSNumber else {
             return nil
         }
         
         return numberValue.floatValue
     }
     
-    open func double(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Double? {
-        guard let numberValue = object(forKey: key, withAccessibility: accessibility) as? NSNumber else {
+    open func double(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> Double? {
+        guard let numberValue = object(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) as? NSNumber else {
             return nil
         }
         
         return numberValue.doubleValue
     }
     
-    open func bool(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool? {
-        guard let numberValue = object(forKey: key, withAccessibility: accessibility) as? NSNumber else {
+    open func bool(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> Bool? {
+        guard let numberValue = object(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) as? NSNumber else {
             return nil
         }
         
@@ -185,8 +186,8 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to lookup data for.
     /// - parameter withAccessibility: Optional accessibility to use when retrieving the keychain item.
     /// - returns: The String associated with the key if it exists. If no data exists, or the data found cannot be encoded as a string, returns nil.
-    open func string(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> String? {
-        guard let keychainData = data(forKey: key, withAccessibility: accessibility) else {
+    open func string(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> String? {
+        guard let keychainData = data(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) else {
             return nil
         }
         
@@ -198,8 +199,8 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to lookup data for.
     /// - parameter withAccessibility: Optional accessibility to use when retrieving the keychain item.
     /// - returns: The decoded object associated with the key if it exists. If no data exists, or the data found cannot be decoded, returns nil.
-    open func object(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> NSCoding? {
-        guard let keychainData = data(forKey: key, withAccessibility: accessibility) else {
+    open func object(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> NSCoding? {
+        guard let keychainData = data(forKey: key, withAccessibility: accessibility, biometricsProtectedMessage: biometricsProtectedMessage) else {
             return nil
         }
         
@@ -212,7 +213,7 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to lookup data for.
     /// - parameter withAccessibility: Optional accessibility to use when retrieving the keychain item.
     /// - returns: The Data object associated with the key if it exists. If no data exists, returns nil.
-    open func data(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Data? {
+    open func data(forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtectedMessage: String? = nil) -> Data? {
         var keychainQueryDictionary = setupKeychainQueryDictionary(forKey: key, withAccessibility: accessibility)
         
         // Limit search results to one
@@ -221,7 +222,9 @@ open class KeychainWrapper {
         // Specify we want Data/CFData returned
         keychainQueryDictionary[SecReturnData] = kCFBooleanTrue
         
-        keychainQueryDictionary[kSecUseOperationPrompt as String] = "Authenticate to access value"
+        if let message = biometricsProtectedMessage {
+            keychainQueryDictionary[SecOperationMessage] = message
+        }
         
         // Search
         var result: AnyObject?
