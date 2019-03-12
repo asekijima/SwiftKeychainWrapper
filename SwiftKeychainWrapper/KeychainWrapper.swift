@@ -26,7 +26,8 @@
 //    SOFTWARE.
 
 import Foundation
-
+import Security
+import LocalAuthentication
 
 private let SecMatchLimit: String! = kSecMatchLimit as String
 private let SecReturnData: String! = kSecReturnData as String
@@ -39,6 +40,8 @@ private let SecAttrGeneric: String! = kSecAttrGeneric as String
 private let SecAttrAccount: String! = kSecAttrAccount as String
 private let SecAttrAccessGroup: String! = kSecAttrAccessGroup as String
 private let SecReturnAttributes: String = kSecReturnAttributes as String
+private let SecAuthenticationUI: String = kSecUseAuthenticationUI as String
+private let SecAttrAccessControl: String = kSecAttrAccessControl as String
 
 /// KeychainWrapper is a class to help make Keychain access in Swift more straightforward. It is designed to make accessing the Keychain services more like using NSUserDefaults, which is much more familiar to people.
 open class KeychainWrapper {
@@ -218,6 +221,8 @@ open class KeychainWrapper {
         // Specify we want Data/CFData returned
         keychainQueryDictionary[SecReturnData] = kCFBooleanTrue
         
+        keychainQueryDictionary[kSecUseOperationPrompt as String] = "Authenticate to access value"
+        
         // Search
         var result: AnyObject?
         let status = SecItemCopyMatching(keychainQueryDictionary as CFDictionary, &result)
@@ -249,20 +254,20 @@ open class KeychainWrapper {
     
     // MARK: Public Setters
     
-    @discardableResult open func set(_ value: Int, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
-        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility)
+    @discardableResult open func set(_ value: Int, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
+        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
     }
     
-    @discardableResult open func set(_ value: Float, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
-        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility)
+    @discardableResult open func set(_ value: Float, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
+        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
     }
     
-    @discardableResult open func set(_ value: Double, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
-        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility)
+    @discardableResult open func set(_ value: Double, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
+        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
     }
     
-    @discardableResult open func set(_ value: Bool, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
-        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility)
+    @discardableResult open func set(_ value: Bool, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
+        return set(NSNumber(value: value), forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
     }
 
     /// Save a String value to the keychain associated with a specified key. If a String value already exists for the given key, the string will be overwritten with the new value.
@@ -271,9 +276,9 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to save the String under.
     /// - parameter withAccessibility: Optional accessibility to use when setting the keychain item.
     /// - returns: True if the save was successful, false otherwise.
-    @discardableResult open func set(_ value: String, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
+    @discardableResult open func set(_ value: String, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
         if let data = value.data(using: .utf8) {
-            return set(data, forKey: key, withAccessibility: accessibility)
+            return set(data, forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
         } else {
             return false
         }
@@ -285,10 +290,10 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to save the object under.
     /// - parameter withAccessibility: Optional accessibility to use when setting the keychain item.
     /// - returns: True if the save was successful, false otherwise.
-    @discardableResult open func set(_ value: NSCoding, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
+    @discardableResult open func set(_ value: NSCoding, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
         let data = NSKeyedArchiver.archivedData(withRootObject: value)
         
-        return set(data, forKey: key, withAccessibility: accessibility)
+        return set(data, forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
     }
 
     /// Save a Data object to the keychain associated with a specified key. If data already exists for the given key, the data will be overwritten with the new value.
@@ -297,16 +302,29 @@ open class KeychainWrapper {
     /// - parameter forKey: The key to save the object under.
     /// - parameter withAccessibility: Optional accessibility to use when setting the keychain item.
     /// - returns: True if the save was successful, false otherwise.
-    @discardableResult open func set(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
+    @discardableResult open func set(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
         var keychainQueryDictionary: [String:Any] = setupKeychainQueryDictionary(forKey: key, withAccessibility: accessibility)
-        
+
         keychainQueryDictionary[SecValueData] = value
-        
+        var access: CFString
         if let accessibility = accessibility {
-            keychainQueryDictionary[SecAttrAccessible] = accessibility.keychainAttrValue
+            access = accessibility.keychainAttrValue
         } else {
             // Assign default protection - Protect the keychain entry so it's only valid when the device is unlocked
-            keychainQueryDictionary[SecAttrAccessible] = KeychainItemAccessibility.whenUnlocked.keychainAttrValue
+            access = KeychainItemAccessibility.whenUnlocked.keychainAttrValue
+        }
+        
+        if biometricsProtected {
+            var accessControlError: Unmanaged<CFError>? = nil
+            let acessObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, access, SecAccessControlCreateFlags.touchIDAny, &accessControlError)
+            
+            guard let accessObj = acessObject, accessControlError == nil else { return false }
+            
+            keychainQueryDictionary[SecAuthenticationUI] = kSecUseAuthenticationUIAllow
+            keychainQueryDictionary[SecAttrAccessControl] = accessObj
+            keychainQueryDictionary.removeValue(forKey: SecAttrAccessible)
+        } else {
+            keychainQueryDictionary[SecAttrAccessible] = access
         }
         
         let status: OSStatus = SecItemAdd(keychainQueryDictionary as CFDictionary, nil)
