@@ -335,7 +335,7 @@ open class KeychainWrapper {
         if status == errSecSuccess {
             return true
         } else if status == errSecDuplicateItem {
-            return update(value, forKey: key, withAccessibility: accessibility)
+            return update(value, forKey: key, withAccessibility: accessibility, biometricsProtected: biometricsProtected)
         } else {
             return false
         }
@@ -415,13 +415,27 @@ open class KeychainWrapper {
     }
     
     /// Update existing data associated with a specified key name. The existing data will be overwritten by the new data.
-    private func update(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil) -> Bool {
+    private func update(_ value: Data, forKey key: String, withAccessibility accessibility: KeychainItemAccessibility? = nil, biometricsProtected: Bool = false) -> Bool {
         var keychainQueryDictionary: [String:Any] = setupKeychainQueryDictionary(forKey: key, withAccessibility: accessibility)
         let updateDictionary = [SecValueData:value]
-        
-        // on update, only set accessibility if passed in
+       
+        var access: CFString
         if let accessibility = accessibility {
-            keychainQueryDictionary[SecAttrAccessible] = accessibility.keychainAttrValue
+            access = accessibility.keychainAttrValue
+        } else {
+            // Assign default protection - Protect the keychain entry so it's only valid when the device is unlocked
+            access = KeychainItemAccessibility.whenUnlocked.keychainAttrValue
+        }
+        
+        if biometricsProtected {
+            var accessControlError: Unmanaged<CFError>? = nil
+            let acessObject = SecAccessControlCreateWithFlags(kCFAllocatorDefault, access, SecAccessControlCreateFlags.touchIDAny, &accessControlError)
+            
+            guard let accessObj = acessObject, accessControlError == nil else { return false }
+            
+            keychainQueryDictionary[SecAuthenticationUI] = kSecUseAuthenticationUIAllow
+            keychainQueryDictionary[SecAttrAccessControl] = accessObj
+            keychainQueryDictionary.removeValue(forKey: SecAttrAccessible)
         }
         
         // Update
